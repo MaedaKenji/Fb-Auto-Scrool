@@ -1,10 +1,10 @@
 /**
  * Facebook Reels Auto-Scroll - Sponsored Reel Detector
- * Detects and auto-skips sponsored reels and ads.
+ * Precisely identifies sponsored reels to prevent false-positive skips.
  */
 
 (function () {
-  const SPONSORED_KEYWORDS = [
+  const EXACT_SPONSORED_TERMS = new Set([
     "sponsored",
     "bersponsor",
     "gesponsert",
@@ -14,23 +14,44 @@
     "patrocinado",
     "paid partnership",
     "kemitraan berbayar"
-  ];
+  ]);
 
-  // Check if a reel card or element contains sponsored markers
+  let lastSkippedTimestamp = 0;
+
+  // Check if an immediate reel card contains verified sponsored markers
   function isSponsoredReel(reelContainer) {
     if (!reelContainer) return false;
 
-    // 1. Check for ad-specific links or attributes
-    const adLinks = reelContainer.querySelectorAll('a[href*="/ads/about"], a[href*="/ad_preferences"], [aria-label*="Sponsored" i], [aria-label*="Bersponsor" i]');
-    if (adLinks.length > 0) return true;
+    // Prevent false positives on high-level wrappers or page body
+    if (
+      reelContainer === document.body ||
+      reelContainer.getAttribute('role') === 'main' ||
+      reelContainer.offsetWidth > 900
+    ) {
+      return false;
+    }
 
-    // 2. Check inner text of headers or labels in container
-    const headerElements = reelContainer.querySelectorAll('span, div, p');
-    for (const el of headerElements) {
-      // Only check short label nodes to avoid false positives in long captions
-      const text = (el.innerText || el.textContent || '').trim().toLowerCase();
-      if (text && text.length < 30) {
-        if (SPONSORED_KEYWORDS.includes(text)) {
+    // Cooldown check (prevent rapid skips)
+    const now = Date.now();
+    if (now - lastSkippedTimestamp < 3000) {
+      return false;
+    }
+
+    // 1. Check for specific ad disclosure links
+    const adLinks = reelContainer.querySelectorAll('a[href*="/ads/about"], a[href*="/ad_preferences"]');
+    if (adLinks.length > 0) {
+      lastSkippedTimestamp = now;
+      return true;
+    }
+
+    // 2. Check leaf text elements inside the reel header/overlay
+    const textNodes = reelContainer.querySelectorAll('span, div[role="button"]');
+    for (const el of textNodes) {
+      // Must be a leaf node (no nested tags) to avoid matching large paragraphs
+      if (el.children.length === 0) {
+        const text = (el.innerText || el.textContent || '').trim().toLowerCase();
+        if (EXACT_SPONSORED_TERMS.has(text)) {
+          lastSkippedTimestamp = now;
           return true;
         }
       }

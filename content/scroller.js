@@ -1,14 +1,15 @@
 /**
  * Facebook Reels Auto-Scroll - Scroller Engine
- * Dispatches navigation commands with multiple resilient fallbacks and debounce locks.
+ * Dispatches navigation commands with fast manual response and safe auto cooldowns.
  */
 
 (function () {
   let isScrolling = false;
   let lastScrollTimestamp = 0;
-  const SCROLL_COOLDOWN_MS = 1400; // Minimum interval between scrolls
+  const MANUAL_COOLDOWN_MS = 320; // Fast and snappy for user clicks
+  const AUTO_COOLDOWN_MS = 800;   // Safe cooldown for automated transitions
 
-  // Synthesize a subtle, pleasant audio blip when transition occurs (if enabled)
+  // Synthesize a subtle audio blip when transition occurs (if enabled)
   function playTransitionSound() {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -18,8 +19,8 @@
       const gain = ctx.createGain();
 
       osc.type = "sine";
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); // A5
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
 
       gain.gain.setValueAtTime(0.05, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
@@ -29,13 +30,12 @@
       osc.start();
       osc.stop(ctx.currentTime + 0.12);
     } catch (e) {
-      // Audio context might be restricted before user gesture
+      // Audio context might be restricted
     }
   }
 
   // Find clickable Next Button in Facebook Reels DOM
   function findNextButton() {
-    // Selectors for Facebook's next button across language variations
     const selectors = [
       'div[role="button"][aria-label*="Next" i]',
       'div[role="button"][aria-label*="Berikutnya" i]',
@@ -53,33 +53,16 @@
         return btn;
       }
     }
-
-    // Secondary search: Find navigation buttons located on the right or bottom of reels
-    const buttons = document.querySelectorAll('div[role="button"]');
-    for (const btn of buttons) {
-      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-      if (aria.includes('next') || aria.includes('berikutnya') || aria.includes('down')) {
-        return btn;
-      }
-    }
-
     return null;
-  }
-
-  // Attempt container scroll
-  function scrollContainerFallback() {
-    // Find the scrollable container housing the reels
-    const main = document.querySelector('div[role="main"]') || document.body;
-    window.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
-    if (main && main !== document.body) {
-      main.scrollBy({ top: window.innerHeight, behavior: 'smooth' });
-    }
   }
 
   // Core navigation function
   function scrollNext(options = {}) {
+    const isManual = Boolean(options.isManual);
+    const cooldown = isManual ? MANUAL_COOLDOWN_MS : AUTO_COOLDOWN_MS;
     const now = Date.now();
-    if (isScrolling || (now - lastScrollTimestamp < SCROLL_COOLDOWN_MS)) {
+
+    if (isScrolling || (now - lastScrollTimestamp < cooldown)) {
       return false;
     }
 
@@ -90,8 +73,9 @@
       playTransitionSound();
     }
 
-    // 1. Primary Method: Dispatch native keyboard ArrowDown events
-    // This is Facebook's native desktop keyboard navigation for Reels
+    const initialUrl = window.location.href;
+
+    // 1. Primary Method: Dispatch EXACTLY ONE ArrowDown event to window
     const keyEventInit = {
       key: 'ArrowDown',
       code: 'ArrowDown',
@@ -102,41 +86,29 @@
       composed: true
     };
 
-    const targetElement = document.activeElement || document.querySelector('div[role="main"]') || document.body;
-    
-    // Dispatch to target element, document and window
-    targetElement.dispatchEvent(new KeyboardEvent('keydown', keyEventInit));
-    document.dispatchEvent(new KeyboardEvent('keydown', keyEventInit));
     window.dispatchEvent(new KeyboardEvent('keydown', keyEventInit));
-
-    targetElement.dispatchEvent(new KeyboardEvent('keyup', keyEventInit));
-    document.dispatchEvent(new KeyboardEvent('keyup', keyEventInit));
     window.dispatchEvent(new KeyboardEvent('keyup', keyEventInit));
 
-    // 2. Secondary Method: Try finding and clicking the Next button
+    // 2. Fallback: If after 500ms the URL did not change, try clicking the next button
     setTimeout(() => {
-      const nextBtn = findNextButton();
-      if (nextBtn) {
-        nextBtn.click();
+      if (window.location.href === initialUrl) {
+        const nextBtn = findNextButton();
+        if (nextBtn) {
+          nextBtn.click();
+        }
       }
-    }, 80);
+    }, 500);
 
-    // 3. Fallback: Scroll window or container if position hasn't changed
-    setTimeout(() => {
-      scrollContainerFallback();
-    }, 250);
-
-    // Release scrolling lock after cooldown
+    // Release lock quickly so subsequent clicks work smoothly
     setTimeout(() => {
       isScrolling = false;
-    }, SCROLL_COOLDOWN_MS);
+    }, cooldown);
 
     return true;
   }
 
-  // Check if currently locked
   function isLocked() {
-    return isScrolling || (Date.now() - lastScrollTimestamp < SCROLL_COOLDOWN_MS);
+    return isScrolling || (Date.now() - lastScrollTimestamp < AUTO_COOLDOWN_MS);
   }
 
   window.FBAutoScroller = {

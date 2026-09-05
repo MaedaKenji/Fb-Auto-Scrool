@@ -35,6 +35,7 @@
         "*://*.facebook.com/*"
       ],
       "js": [
+        "content/audioManager.js",
         "content/scroller.js",
         "content/sponsorSkip.js",
         "content/hud.js",

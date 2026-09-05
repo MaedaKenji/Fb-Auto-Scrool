@@ -13,12 +13,14 @@ A high-performance, modern Chrome Extension (Manifest V3) that automatically scr
 ## ✨ Features
 
 - **🚀 Automatic Video End Detection**: Overcomes Facebook's continuous video loop behavior using a triple-trigger detection engine (HTML5 `ended` listener, sub-second `timeupdate` threshold, and instant loop wrap-around tracking).
+- **🔊 Auto-Unmute Audio**: Automatically enables sound when opening or refreshing Facebook Reels, bypassing Facebook's default muted playback.
+- **🖱️ Draggable Floating HUD**: Click and drag the on-screen pill anywhere on your screen. The extension remembers your preferred position!
+- **⚡ Snappy Manual Next Button**: Fast, responsive 320ms manual scrolling when you click the down arrow button on the HUD.
 - **⌨️ Keyboard Shortcut Toggle**: Press **`Shift + D`** anywhere on Facebook Reels to toggle auto-scroll ON or OFF without touching your mouse.
 - **🔂 Loop / Pin Current Reel**: Press **`Shift + L`** or click the loop button on the HUD to pin the current video and let it loop continuously.
 - **⏱️ Configurable Delay (0s - 5s)**: Give yourself time to see the end of a video before it scrolls away. Includes an animated countdown bar.
 - **🚫 Skip Sponsored Reels & Ads**: Automatically detects sponsored markers and fast-forwards past ads.
 - **💬 Smart Typing & Comments Protection**: Automatically pauses auto-scroll while you have the comments pane open or are typing in a comment or message box.
-- **💎 On-Screen Glassmorphism HUD**: A sleek floating pill showing live status, remaining countdown seconds, and instant toggle controls directly over the Reels viewer.
 - **🎨 Modern Glassmorphic Popup**: Beautiful dark mode settings dashboard to customize all preferences.
 - **🔒 Privacy First & Lightweight**: Zero external trackers, zero ads, runs strictly on Facebook Reels.
 
@@ -71,6 +73,7 @@ Fb-Auto-Scrool/
 ├── background/
 │   └── service-worker.js      # Extension badge manager & hotkey router
 ├── content/
+│   ├── audioManager.js        # Automatic unmuting on load and route changes
 │   ├── content.js             # Main coordinator & settings synchronization
 │   ├── detector.js            # Active video tracker & end/loop detection engine
 │   ├── scroller.js            # Synthetic keyboard ArrowDown navigation & fallbacks

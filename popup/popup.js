@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const skipSponsoredToggle = document.getElementById('skipSponsoredToggle');
   const pauseCommentsToggle = document.getElementById('pauseCommentsToggle');
+  const autoUnmuteToggle = document.getElementById('autoUnmuteToggle');
   const soundCueToggle = document.getElementById('soundCueToggle');
 
   const connectionDot = document.getElementById('connectionDot');
@@ -25,7 +26,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     scrollDelay: 1.0,
     skipSponsored: true,
     pauseOnComments: true,
-    soundNotification: false
+    soundNotification: false,
+    autoUnmute: true
   };
 
   // Load saved settings
@@ -53,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   delayValueBadge.textContent = `${parseFloat(settings.scrollDelay).toFixed(1)}s`;
   skipSponsoredToggle.checked = settings.skipSponsored;
   pauseCommentsToggle.checked = settings.pauseOnComments;
+  autoUnmuteToggle.checked = settings.autoUnmute !== undefined ? settings.autoUnmute : true;
   soundCueToggle.checked = settings.soundNotification;
 
   // Broadcast settings to active tab
@@ -101,6 +104,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Pause on Comments Toggle
   pauseCommentsToggle.addEventListener('change', (e) => {
     broadcastSettings({ pauseOnComments: e.target.checked });
+  });
+
+  // Auto Unmute Toggle
+  autoUnmuteToggle.addEventListener('change', (e) => {
+    broadcastSettings({ autoUnmute: e.target.checked });
   });
 
   // Sound Cue Toggle

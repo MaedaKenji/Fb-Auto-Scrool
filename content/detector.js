@@ -1,6 +1,6 @@
 /**
  * Facebook Reels Auto-Scroll - Video Player & End-of-Reel Detector
- * Monitors DOM mutations, tracks active reel video, detects video completion and loops.
+ * Monitors DOM mutations, tracks active reel video, and ensures strictly ONE completion trigger per reel.
  */
 
 (function () {
@@ -9,6 +9,7 @@
   let lastTime = 0;
   let completionFired = false;
   let lastCompletionTimestamp = 0;
+  let lastCompletedUrl = '';
   let pollInterval = null;
 
   let callbacks = {
@@ -29,7 +30,6 @@
 
   // Check if Facebook comments panel is currently open
   function isCommentsOpen() {
-    // Facebook comments drawer on Reels typically has role="dialog" or specific comment list
     const commentInput = document.querySelector('form div[role="textbox"], form textarea[placeholder*="comment" i], form textarea[placeholder*="komentar" i]');
     if (commentInput && commentInput.offsetParent !== null) {
       return true;
@@ -51,7 +51,6 @@
     const winHeight = window.innerHeight || document.documentElement.clientHeight;
     const winWidth = window.innerWidth || document.documentElement.clientWidth;
 
-    // Center coordinates of the video
     const centerY = rect.top + rect.height / 2;
     const centerX = rect.left + rect.width / 2;
 
@@ -62,15 +61,19 @@
     return inY && inX && hasSize;
   }
 
-  // Locate the reel card/container surrounding the video
+  // Locate the specific reel card surrounding the video (scoped tightly)
   function findReelContainer(video) {
     let current = video.parentElement;
     while (current && current !== document.body) {
-      // Look for Facebook's feed card container boundaries
+      // Must NOT be the whole page main container
+      if (current.getAttribute('role') === 'main') {
+        break;
+      }
+      // Target the vertical reel card (bounded width and height)
       if (
-        current.getAttribute('role') === 'main' ||
-        current.getAttribute('data-pagelet') ||
-        (current.offsetHeight > window.innerHeight * 0.6 && current.offsetWidth > 250)
+        current.offsetHeight >= window.innerHeight * 0.5 &&
+        current.offsetWidth <= 750 &&
+        current.offsetWidth >= 200
       ) {
         return current;
       }
@@ -84,33 +87,48 @@
     const videos = Array.from(document.querySelectorAll('video'));
     if (videos.length === 0) return null;
 
-    // 1. First priority: Video in viewport that is playing
+    // 1. First priority: Playing video in viewport
     for (const video of videos) {
       if (!video.paused && !video.ended && isVideoInViewport(video)) {
         return video;
       }
     }
 
-    // 2. Second priority: Any video in viewport
+    // 2. Second priority: Any video centered in viewport
     for (const video of videos) {
       if (isVideoInViewport(video)) {
         return video;
       }
     }
 
-    // 3. Fallback: First video with valid duration
-    return videos.find(v => v.duration > 0) || videos[0] || null;
+    return null;
   }
 
-  // Trigger completion safely with debouncing
+  // Trigger completion strictly ONCE per video/reel
   function triggerCompletion(reason, isAd = false) {
     const now = Date.now();
-    if (completionFired || (now - lastCompletionTimestamp < 1500)) {
+    const currentUrl = window.location.href;
+
+    // Guard: Video already marked complete
+    if (!activeVideo || activeVideo._fbCompleted) {
       return;
     }
 
+    // Guard: Already completed on this exact URL within 3 seconds
+    if (lastCompletedUrl && currentUrl === lastCompletedUrl && (now - lastCompletionTimestamp < 3000)) {
+      return;
+    }
+
+    // Guard: Cooldown lock
+    if (completionFired || (now - lastCompletionTimestamp < 2500)) {
+      return;
+    }
+
+    // Mark as completed permanently for this video instance
+    activeVideo._fbCompleted = true;
     completionFired = true;
     lastCompletionTimestamp = now;
+    lastCompletedUrl = currentUrl;
 
     if (typeof callbacks.onVideoEnded === 'function') {
       callbacks.onVideoEnded({
@@ -126,7 +144,6 @@
   function attachVideoListeners(video) {
     if (!video) return;
 
-    // Remove loop attribute so standard ended event can fire natively if allowed
     try {
       video.loop = false;
     } catch (e) {}
@@ -136,21 +153,24 @@
     };
 
     const onTimeUpdate = () => {
-      if (!video || !video.duration || !Number.isFinite(video.duration)) {
+      if (!video || video._fbCompleted || !video.duration || !Number.isFinite(video.duration)) {
         return;
       }
 
       const duration = video.duration;
       const currentTime = video.currentTime;
 
+      // Minimum duration to prevent instant glitch triggers
+      if (duration < 1.5) return;
+
       // Check remaining playback time (threshold: 0.35s)
-      if (duration > 1 && (duration - currentTime <= 0.35)) {
+      if (duration - currentTime <= 0.35) {
         triggerCompletion('time_threshold');
         return;
       }
 
-      // Loop wrap-around detection (video suddenly restarted from end to start)
-      if (lastTime > (duration - 1.2) && currentTime < 0.5) {
+      // Loop wrap-around detection (restarted from near duration to beginning)
+      if (lastTime > (duration - 1.0) && currentTime < 0.3) {
         triggerCompletion('loop_restart');
       }
 
@@ -160,7 +180,6 @@
     video.addEventListener('ended', onEnded);
     video.addEventListener('timeupdate', onTimeUpdate);
 
-    // Save cleanup references on the video element
     video._fbAsCleanup = () => {
       video.removeEventListener('ended', onEnded);
       video.removeEventListener('timeupdate', onTimeUpdate);
@@ -178,7 +197,9 @@
       activeVideo = detected;
       activeReelContainer = findReelContainer(detected);
       lastTime = activeVideo.currentTime || 0;
-      completionFired = false;
+      
+      // If this video was not completed before, allow completion
+      completionFired = Boolean(activeVideo._fbCompleted);
 
       attachVideoListeners(activeVideo);
 
@@ -188,11 +209,6 @@
           container: activeReelContainer
         });
       }
-    } else if (activeVideo) {
-      // If same video restarted from 0 after completion fired, reset flag
-      if (completionFired && activeVideo.currentTime < 1.0 && (Date.now() - lastCompletionTimestamp > 2500)) {
-        completionFired = false;
-      }
     }
   }
 
@@ -200,10 +216,8 @@
     callbacks.onVideoEnded = onEnded;
     callbacks.onVideoChange = onVideoChange;
 
-    // Initial check
     checkCurrentVideo();
 
-    // High frequency interval to keep up with fast user scrolling and dynamic DOM
     if (!pollInterval) {
       pollInterval = setInterval(checkCurrentVideo, 300);
     }
@@ -222,10 +236,6 @@
     completionFired = false;
   }
 
-  function resetCompletionFlag() {
-    completionFired = false;
-  }
-
   window.FBVideoDetector = {
     start,
     stop,
@@ -233,7 +243,6 @@
     getActiveContainer: () => activeReelContainer,
     isUserTyping,
     isCommentsOpen,
-    resetCompletionFlag,
     triggerCompletion
   };
 })();

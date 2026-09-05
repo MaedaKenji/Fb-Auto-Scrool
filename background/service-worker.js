@@ -9,7 +9,8 @@ const DEFAULT_SETTINGS = {
   skipSponsored: true,        // Automatically skip sponsored/ad reels
   pauseOnComments: true,      // Pause auto-scroll when comments are opened or typing
   soundNotification: false,   // Subtle audio cue on reel transition
-  loopCurrentReel: false      // Temporarily loop current reel
+  loopCurrentReel: false,     // Temporarily loop current reel
+  autoUnmute: true            // Automatically enable sound on load & scroll
 };
 
 // Initialize default settings upon installation

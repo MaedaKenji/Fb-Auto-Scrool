@@ -1,6 +1,6 @@
 /**
  * Facebook Reels Auto-Scroll - Main Content Script Coordinator
- * Coordinates video detection, user settings, HUD updates, and scroll execution.
+ * Coordinates video detection, user settings, audio management, HUD updates, and scroll execution.
  */
 
 (function () {
@@ -9,7 +9,8 @@
     scrollDelay: 1.0,
     skipSponsored: true,
     pauseOnComments: true,
-    soundNotification: false
+    soundNotification: false,
+    autoUnmute: true
   };
 
   let isCurrentReelPinned = false;
@@ -26,6 +27,9 @@
     try {
       const data = await chrome.storage.local.get(settings);
       settings = { ...settings, ...data };
+      if (window.FBAudioManager) {
+        window.FBAudioManager.setAutoUnmute(settings.autoUnmute);
+      }
     } catch (e) {
       console.warn('[FB-AutoScroll] Failed to load settings from storage:', e);
     }
@@ -50,7 +54,7 @@
       }
     }
 
-    const delayMs = Math.round((settings.scrollDelay || 1.0) * 1000);
+    const delayMs = Math.round((settings.scrollDelay || 1.0) * 500);
 
     // Show countdown on HUD
     window.FBAutoScrollHUD.showCountdown(delayMs, () => {
@@ -60,13 +64,10 @@
         return;
       }
 
-      const scrolled = window.FBAutoScroller.scrollNext({
-        playSound: settings.soundNotification
+      window.FBAutoScroller.scrollNext({
+        playSound: settings.soundNotification,
+        isManual: false
       });
-
-      if (scrolled) {
-        window.FBVideoDetector.resetCompletionFlag();
-      }
     });
   }
 
@@ -77,17 +78,23 @@
     window.FBAutoScrollHUD.cancelCountdown();
     window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
 
-    // Check if new reel is sponsored/ad
+    // Auto-unmute sound if enabled
+    if (settings.autoUnmute && window.FBAudioManager) {
+      setTimeout(() => {
+        window.FBAudioManager.unmuteCurrentVideo(info.video);
+      }, 150);
+    }
+
+    // Check if new reel is sponsored/ad with debounce
     if (settings.enabled && settings.skipSponsored) {
-      const container = info.container || window.FBVideoDetector.getActiveContainer();
-      if (container && window.FBSponsorWatcher.isSponsoredReel(container)) {
-        window.FBAutoScrollHUD.showToast('Skipping Sponsored Reel...', 1000);
-        setTimeout(() => {
-          if (settings.enabled) {
-            window.FBAutoScroller.scrollNext({ playSound: false });
-          }
-        }, 400);
-      }
+      setTimeout(() => {
+        if (!settings.enabled || window.FBAutoScroller.isLocked()) return;
+        const container = window.FBVideoDetector.getActiveContainer();
+        if (container && window.FBSponsorWatcher.isSponsoredReel(container)) {
+          window.FBAutoScrollHUD.showToast('Skipping Sponsored Reel...', 1000);
+          window.FBAutoScroller.scrollNext({ playSound: false, isManual: false });
+        }
+      }, 800);
     }
   }
 
@@ -102,7 +109,6 @@
     const message = settings.enabled ? 'Auto-Scroll Enabled' : 'Auto-Scroll Disabled';
     window.FBAutoScrollHUD.showToast(message);
 
-    // Inform background script to update badge
     chrome.runtime.sendMessage({
       action: 'UPDATE_BADGE',
       enabled: settings.enabled
@@ -122,12 +128,11 @@
   // Listen for keyboard shortcuts (Shift+D)
   function setupKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
-      // Don't trigger if user is typing in form fields
       if (window.FBVideoDetector.isUserTyping()) {
         return;
       }
 
-      // Shortcut: Shift + D (Case insensitive check)
+      // Shortcut: Shift + D
       if (e.shiftKey && (e.key === 'D' || e.key === 'd') && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -148,6 +153,9 @@
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.action === 'STATE_CHANGED' && message.settings) {
         settings = { ...settings, ...message.settings };
+        if (window.FBAudioManager && message.settings.autoUnmute !== undefined) {
+          window.FBAudioManager.setAutoUnmute(message.settings.autoUnmute);
+        }
         window.FBAutoScrollHUD.cancelCountdown();
         window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
         sendResponse({ success: true });
@@ -157,18 +165,20 @@
       return true;
     });
 
-    // Listen for storage changes from popup
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         for (const [key, change] of Object.entries(changes)) {
           settings[key] = change.newValue;
+          if (key === 'autoUnmute' && window.FBAudioManager) {
+            window.FBAudioManager.setAutoUnmute(change.newValue);
+          }
         }
         window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
       }
     });
   }
 
-  // Main initialisation sequence
+  // Main initialization sequence
   async function init() {
     if (initialized) return;
     initialized = true;
@@ -189,21 +199,22 @@
     console.log('[FB-AutoScroll] Extension initialized successfully.');
   }
 
-  // Start on page ready or when navigating to reels SPA
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
 
-  // Monitor SPA URL changes (Facebook uses pushState without full reloads)
+  // Monitor SPA URL changes
   let currentUrl = window.location.href;
   setInterval(() => {
     if (window.location.href !== currentUrl) {
       currentUrl = window.location.href;
-      // Re-check status on route change
-      if (initialized && window.FBVideoDetector) {
-        window.FBVideoDetector.resetCompletionFlag();
+      // Auto-unmute on SPA route change
+      if (settings.autoUnmute && window.FBAudioManager) {
+        setTimeout(() => {
+          window.FBAudioManager.unmuteCurrentVideo();
+        }, 200);
       }
     }
   }, 500);

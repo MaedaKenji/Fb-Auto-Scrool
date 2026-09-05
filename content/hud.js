@@ -1,23 +1,167 @@
 /**
  * Facebook Reels Auto-Scroll - Floating HUD and Notifications
- * Renders the modern floating pill indicator and toast messages.
+ * Draggable pill indicator, countdown timer, and quick controls.
  */
 
 (function () {
   let hudContainer = null;
+  let pill = null;
   let statusDot = null;
   let stateBadge = null;
   let labelText = null;
   let progressBar = null;
   let loopBtn = null;
+  let audioBtn = null;
   let countdownTimer = null;
   let countdownStartTime = 0;
   let countdownTotalMs = 0;
   let toastContainer = null;
 
+  // Dragging state
+  let isDragging = false;
+  let hasMoved = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let initialLeft = 0;
+  let initialTop = 0;
+  let suppressClick = false;
+
   // Icons
+  const GRIP_ICON = `<svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor"><circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/><circle cx="2" cy="6" r="1.2"/><circle cx="6" cy="6" r="1.2"/><circle cx="2" cy="10" r="1.2"/><circle cx="6" cy="10" r="1.2"/></svg>`;
   const REPEAT_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`;
   const DOWN_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`;
+  const SPEAKER_ON_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
+  const SPEAKER_OFF_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`;
+
+  // Restore saved HUD position
+  function restorePosition() {
+    try {
+      const saved = localStorage.getItem('fb_autoscroll_hud_pos');
+      if (saved && hudContainer) {
+        const pos = JSON.parse(saved);
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+
+        // Ensure position remains inside current viewport
+        const clampedX = Math.max(10, Math.min(winWidth - 180, pos.x));
+        const clampedY = Math.max(10, Math.min(winHeight - 60, pos.y));
+
+        hudContainer.style.left = `${clampedX}px`;
+        hudContainer.style.top = `${clampedY}px`;
+        hudContainer.style.right = 'auto';
+        hudContainer.style.bottom = 'auto';
+      }
+    } catch (e) {}
+  }
+
+  // Save HUD position
+  function savePosition(x, y) {
+    try {
+      localStorage.setItem('fb_autoscroll_hud_pos', JSON.stringify({ x, y }));
+    } catch (e) {}
+  }
+
+  // Setup Drag and Drop handling
+  function setupDraggable(container, dragElement) {
+    function onPointerDown(clientX, clientY, target) {
+      // Don't drag if clicking buttons inside group
+      if (target.closest('.fb-as-btn-group')) return;
+
+      isDragging = true;
+      hasMoved = false;
+      dragStartX = clientX;
+      dragStartY = clientY;
+
+      const rect = container.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+
+      container.classList.add('dragging');
+      pill.classList.add('dragging');
+    }
+
+    function onPointerMove(clientX, clientY) {
+      if (!isDragging) return;
+
+      const deltaX = clientX - dragStartX;
+      const deltaY = clientY - dragStartY;
+
+      if (!hasMoved && Math.hypot(deltaX, deltaY) > 4) {
+        hasMoved = true;
+      }
+
+      if (hasMoved) {
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+        const rect = container.getBoundingClientRect();
+
+        let newLeft = initialLeft + deltaX;
+        let newTop = initialTop + deltaY;
+
+        // Constrain to viewport boundaries
+        newLeft = Math.max(10, Math.min(winWidth - rect.width - 10, newLeft));
+        newTop = Math.max(10, Math.min(winHeight - rect.height - 10, newTop));
+
+        container.style.left = `${newLeft}px`;
+        container.style.top = `${newTop}px`;
+        container.style.right = 'auto';
+        container.style.bottom = 'auto';
+      }
+    }
+
+    function onPointerUp() {
+      if (!isDragging) return;
+      isDragging = false;
+      container.classList.remove('dragging');
+      pill.classList.remove('dragging');
+
+      if (hasMoved) {
+        suppressClick = true;
+        setTimeout(() => {
+          suppressClick = false;
+        }, 120);
+
+        const rect = container.getBoundingClientRect();
+        savePosition(rect.left, rect.top);
+      }
+    }
+
+    // Mouse listeners
+    dragElement.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // Left click only
+      onPointerDown(e.clientX, e.clientY, e.target);
+
+      const moveHandler = (ev) => onPointerMove(ev.clientX, ev.clientY);
+      const upHandler = () => {
+        onPointerUp();
+        document.removeEventListener('mousemove', moveHandler);
+        document.removeEventListener('mouseup', upHandler);
+      };
+
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
+    });
+
+    // Touch listeners
+    dragElement.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      onPointerDown(e.touches[0].clientX, e.touches[0].clientY, e.target);
+
+      const moveHandler = (ev) => {
+        if (ev.touches.length === 1) {
+          onPointerMove(ev.touches[0].clientX, ev.touches[0].clientY);
+        }
+      };
+      const endHandler = () => {
+        onPointerUp();
+        document.removeEventListener('touchmove', moveHandler);
+        document.removeEventListener('touchend', endHandler);
+      };
+
+      document.addEventListener('touchmove', moveHandler, { passive: true });
+      document.addEventListener('touchend', endHandler);
+    }, { passive: true });
+  }
 
   function init(onToggle, onLoopToggle) {
     if (document.getElementById('fb-autoscroll-hud-root')) {
@@ -29,9 +173,14 @@
     hudContainer.id = 'fb-autoscroll-hud-root';
 
     // Main pill
-    const pill = document.createElement('div');
+    pill = document.createElement('div');
     pill.className = 'fb-as-pill';
-    pill.title = 'Facebook Reels Auto-Scroll (Click to Toggle, Shortcut: Shift+D)';
+    pill.title = 'Facebook Reels Auto-Scroll (Drag to move, click to toggle)';
+
+    // Drag handle
+    const dragHandle = document.createElement('div');
+    dragHandle.className = 'fb-as-drag-handle';
+    dragHandle.innerHTML = GRIP_ICON;
 
     // Status dot
     statusDot = document.createElement('div');
@@ -55,6 +204,18 @@
     const btnGroup = document.createElement('div');
     btnGroup.className = 'fb-as-btn-group';
 
+    // Audio Mute/Unmute toggle button
+    audioBtn = document.createElement('button');
+    audioBtn.className = 'fb-as-icon-btn fb-as-audio-btn';
+    audioBtn.title = 'Sound (Click to toggle)';
+    audioBtn.innerHTML = SPEAKER_ON_ICON;
+    audioBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.FBAudioManager) {
+        window.FBAudioManager.toggleAudio();
+      }
+    });
+
     // Loop button
     loopBtn = document.createElement('button');
     loopBtn.className = 'fb-as-icon-btn';
@@ -67,18 +228,20 @@
       }
     });
 
-    // Manual Next button
+    // Fast Responsive Next button
     const nextBtn = document.createElement('button');
     nextBtn.className = 'fb-as-icon-btn';
-    nextBtn.title = 'Scroll to next reel now';
+    nextBtn.title = 'Scroll to next reel now (Fast)';
     nextBtn.innerHTML = DOWN_ICON;
     nextBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      cancelCountdown();
       if (window.FBAutoScroller) {
-        window.FBAutoScroller.scrollNext();
+        window.FBAutoScroller.scrollNext({ isManual: true });
       }
     });
 
+    btnGroup.appendChild(audioBtn);
     btnGroup.appendChild(loopBtn);
     btnGroup.appendChild(nextBtn);
 
@@ -87,14 +250,15 @@
     progressBar.className = 'fb-as-progress-bar';
 
     // Assemble pill
+    pill.appendChild(dragHandle);
     pill.appendChild(statusDot);
     pill.appendChild(label);
     pill.appendChild(btnGroup);
     pill.appendChild(progressBar);
 
-    // Pill click toggles master auto-scroll
+    // Pill click ONLY toggles master auto-scroll (completely separated from audio)
     pill.addEventListener('click', (e) => {
-      if (e.target.closest('.fb-as-btn-group')) return;
+      if (suppressClick || e.target.closest('.fb-as-btn-group')) return;
       if (typeof onToggle === 'function') {
         onToggle();
       }
@@ -103,10 +267,19 @@
     hudContainer.appendChild(pill);
     document.body.appendChild(hudContainer);
 
+    // Restore previous drag position
+    restorePosition();
+
+    // Make pill draggable
+    setupDraggable(hudContainer, pill);
+
     // Toast container
     toastContainer = document.createElement('div');
     toastContainer.className = 'fb-as-toast-container';
     document.body.appendChild(toastContainer);
+
+    // Re-clamp position on window resize
+    window.addEventListener('resize', restorePosition);
   }
 
   function updateStatus(enabled, isPinned = false, extraText = '') {
@@ -193,11 +366,30 @@
     }, duration);
   }
 
+  function updateAudioState(isMuted) {
+    if (!audioBtn) return;
+    if (isMuted) {
+      audioBtn.innerHTML = SPEAKER_OFF_ICON;
+      audioBtn.classList.add('muted');
+      audioBtn.title = 'Sound is Muted (Click to Unmute)';
+    } else {
+      audioBtn.innerHTML = SPEAKER_ON_ICON;
+      audioBtn.classList.remove('muted');
+      audioBtn.title = 'Sound is Playing (Click to Mute)';
+    }
+  }
+
+  function setPendingUnmute(pending) {
+    updateAudioState(pending);
+  }
+
   window.FBAutoScrollHUD = {
     init,
     updateStatus,
     showCountdown,
     cancelCountdown,
-    showToast
+    showToast,
+    updateAudioState,
+    setPendingUnmute
   };
 })();
