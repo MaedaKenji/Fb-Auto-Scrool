@@ -55,11 +55,11 @@ A high-performance, modern Chrome Extension (Manifest V3) that automatically scr
 
 ## ⌨️ Shortcuts Reference
 
-| Shortcut | Action | Scope |
-| :--- | :--- | :--- |
-| <kbd>Shift</kbd> + <kbd>D</kbd> | Toggle Auto-Scroll ON / OFF | In-page (Reels viewer) |
-| <kbd>Shift</kbd> + <kbd>L</kbd> | Loop / Pin current reel (pauses scrolling for this reel) | In-page (Reels viewer) |
-| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Global browser command shortcut | Global Chrome command |
+| Shortcut                                         | Action                                                   | Scope                  |
+| :----------------------------------------------- | :------------------------------------------------------- | :--------------------- |
+| <kbd>Shift</kbd> + <kbd>D</kbd>                  | Toggle Auto-Scroll ON / OFF                              | In-page (Reels viewer) |
+| <kbd>Shift</kbd> + <kbd>L</kbd>                  | Loop / Pin current reel (pauses scrolling for this reel) | In-page (Reels viewer) |
+| <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Global browser command shortcut                          | Global Chrome command  |
 
 ---
 
@@ -95,30 +95,6 @@ Facebook Reels uses dynamic client-side rendering (React) with obfuscated class 
 1. **Navigation Engine**: Instead of fragile class selectors, the extension dispatches synthetic `KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40 })` events directly to the window and active container. This mirrors Facebook's official keyboard navigation.
 2. **Loop Interception**: Facebook Reels often loop back to `0:00` without triggering a standard `ended` event. The detector observes both `currentTime >= duration - 0.35s` and sudden wrap-around time jumps (`previousTime > duration - 1.2s` and `currentTime < 0.4s`).
 3. **Debounce Locks**: To prevent fast runaway scrolls on short videos or buffering delays, a 1.4-second hardware debounce lock guards each transition.
-
----
-
-## 🚀 Publishing to Chrome Web Store
-
-This extension is built with **Manifest V3** and conforms to all Google Chrome Web Store Developer Program Policies:
-
-### 1. Requirements Checklist
-- [x] **Manifest V3**: Uses modern service worker (`service-worker.js`) instead of deprecated background pages.
-- [x] **No Remote Code Execution**: All JavaScript and CSS are packaged locally.
-- [x] **Minimal Permissions**: Requests only `storage` (for settings) and content scripts for `facebook.com`.
-- [x] **Single Purpose**: Dedicated exclusively to enhancing Facebook Reels playback.
-
-### 2. How to Bundle for Web Store Submission
-To prepare the package for the Chrome Web Store Developer Dashboard:
-```bash
-# Create a production zip package (excluding git and source svg)
-zip -r fb-reels-auto-scroll.zip manifest.json background content popup icons LICENSE README.md -x "icons/icon.svg"
-```
-
-### 3. Chrome Web Store Fees & Policy
-- **Registration Fee**: Google charges a **one-time $5 USD registration fee** to create a Chrome Web Store Developer account.
-- **Publishing Free Extensions**: Once the account is registered, publishing and distributing free extensions is **100% free forever** with unlimited users and updates.
-- **Submission Portal**: Upload `fb-reels-auto-scroll.zip` at the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole/).
 
 ---
 
