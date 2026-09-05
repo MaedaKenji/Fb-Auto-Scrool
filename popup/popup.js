@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const DEFAULT_SETTINGS = {
     enabled: true,
-    scrollDelay: 1.0,
+    scrollDelay: 0.0,
     skipSponsored: true,
     pauseOnComments: true,
     soundNotification: false,

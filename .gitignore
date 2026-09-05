@@ -11,3 +11,7 @@ node_modules/
 .vscode/
 .idea/
 *.log
+
+# Gemini notes
+GEMINI.md
+gemini.md

@@ -256,9 +256,18 @@
     pill.appendChild(btnGroup);
     pill.appendChild(progressBar);
 
-    // Pill click ONLY toggles master auto-scroll (completely separated from audio)
+    // Pill click: toggles master auto-scroll or resumes interrupted playback
     pill.addEventListener('click', (e) => {
       if (suppressClick || e.target.closest('.fb-as-btn-group')) return;
+      if (isInterruptedState) {
+        setInterruptedState(false);
+        const video = window.FBVideoDetector ? window.FBVideoDetector.getActiveVideo() : null;
+        if (video && video.paused) {
+          video.play().catch(() => {});
+        }
+        updateStatus(true);
+        return;
+      }
       if (typeof onToggle === 'function') {
         onToggle();
       }
@@ -282,17 +291,21 @@
     window.addEventListener('resize', restorePosition);
   }
 
+  let currentStatusText = 'ON';
+
   function updateStatus(enabled, isPinned = false, extraText = '') {
     if (!statusDot) return;
+
+    currentStatusText = isPinned ? 'PINNED' : (extraText || (enabled ? 'ON' : 'OFF'));
 
     if (enabled) {
       statusDot.classList.add('active');
       stateBadge.classList.add('active');
-      stateBadge.textContent = isPinned ? 'PINNED' : (extraText || 'ON');
+      stateBadge.textContent = currentStatusText;
     } else {
       statusDot.classList.remove('active');
       stateBadge.classList.remove('active');
-      stateBadge.textContent = extraText || 'OFF';
+      stateBadge.textContent = currentStatusText;
     }
 
     if (loopBtn) {
@@ -313,38 +326,34 @@
       return;
     }
 
-    countdownTotalMs = delayMs;
-    countdownStartTime = Date.now();
+    if (progressBar) {
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '0%';
+      void progressBar.offsetWidth; // Force synchronous layout reflow
+      progressBar.style.transition = `width ${delayMs}ms linear`;
+      progressBar.style.width = '100%';
+    }
 
-    const interval = 25;
-    countdownTimer = setInterval(() => {
-      const elapsed = Date.now() - countdownStartTime;
-      const progress = Math.min(100, (elapsed / countdownTotalMs) * 100);
-      const remainingSec = Math.max(0, ((countdownTotalMs - elapsed) / 1000)).toFixed(1);
-
-      if (progressBar) {
-        progressBar.style.width = `${progress}%`;
+    countdownTimer = setTimeout(() => {
+      countdownTimer = null;
+      if (typeof onComplete === 'function') {
+        onComplete();
       }
-      if (stateBadge) {
-        stateBadge.textContent = `${remainingSec}s`;
-      }
-
-      if (elapsed >= countdownTotalMs) {
-        cancelCountdown();
-        if (typeof onComplete === 'function') {
-          onComplete();
-        }
-      }
-    }, interval);
+    }, delayMs);
   }
 
   function cancelCountdown() {
     if (countdownTimer) {
+      clearTimeout(countdownTimer);
       clearInterval(countdownTimer);
       countdownTimer = null;
     }
     if (progressBar) {
+      progressBar.style.transition = 'none';
       progressBar.style.width = '0%';
+    }
+    if (stateBadge && !isInterruptedState) {
+      stateBadge.textContent = currentStatusText;
     }
   }
 
@@ -383,6 +392,24 @@
     updateAudioState(pending);
   }
 
+  let isInterruptedState = false;
+
+  function setInterruptedState(interrupted, customLabel, customTooltip) {
+    isInterruptedState = Boolean(interrupted);
+    if (!statusDot || !stateBadge || !pill) return;
+
+    if (isInterruptedState) {
+      statusDot.classList.add('interrupted');
+      stateBadge.classList.add('interrupted');
+      stateBadge.textContent = customLabel || 'PAUSED';
+      pill.title = customTooltip || 'Playback was paused by tab/app switch. Click anywhere on the page to resume.';
+    } else {
+      statusDot.classList.remove('interrupted');
+      stateBadge.classList.remove('interrupted');
+      pill.title = 'Facebook Reels Auto-Scroll (Drag to move, click to toggle)';
+    }
+  }
+
   window.FBAutoScrollHUD = {
     init,
     updateStatus,
@@ -390,6 +417,7 @@
     cancelCountdown,
     showToast,
     updateAudioState,
-    setPendingUnmute
+    setPendingUnmute,
+    setInterruptedState
   };
 })();

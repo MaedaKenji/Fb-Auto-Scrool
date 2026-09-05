@@ -6,7 +6,7 @@
 (function () {
   let settings = {
     enabled: true,
-    scrollDelay: 1.0,
+    scrollDelay: 0.0,
     skipSponsored: true,
     pauseOnComments: true,
     soundNotification: false,
@@ -26,6 +26,11 @@
   async function loadSettings() {
     try {
       const data = await chrome.storage.local.get(settings);
+      // Migration: Auto-upgrade legacy default (1.0) to instant (0.0)
+      if (data.scrollDelay === 1.0) {
+        data.scrollDelay = 0.0;
+        chrome.storage.local.set({ scrollDelay: 0.0 }).catch(() => {});
+      }
       settings = { ...settings, ...data };
       if (window.FBAudioManager) {
         window.FBAudioManager.setAutoUnmute(settings.autoUnmute);
@@ -54,13 +59,17 @@
       }
     }
 
-    const delayMs = Math.round((settings.scrollDelay || 1.0) * 500);
+    const delayMs = settings.scrollDelay !== undefined ? Math.max(0, Math.round(Number(settings.scrollDelay) * 1000)) : 0;
 
     // Show countdown on HUD
     window.FBAutoScrollHUD.showCountdown(delayMs, () => {
       // Re-verify conditions before dispatching scroll
-      if (!settings.enabled || isCurrentReelPinned) return;
+      if (!settings.enabled || isCurrentReelPinned) {
+        window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
+        return;
+      }
       if (settings.pauseOnComments && (window.FBVideoDetector.isUserTyping() || window.FBVideoDetector.isCommentsOpen())) {
+        window.FBAutoScrollHUD.updateStatus(true, false, 'PAUSED');
         return;
       }
 
@@ -178,6 +187,96 @@
     });
   }
 
+  // Handle Tab Switching & App Focus Lifecycle
+  function setupVisibilityAndFocusHandlers() {
+    let wasPlayingBeforeLoss = true;
+
+    function handleFocusLoss() {
+      const video = window.FBVideoDetector ? window.FBVideoDetector.getActiveVideo() : null;
+      if (video && !video.paused) {
+        wasPlayingBeforeLoss = true;
+      }
+    }
+
+    function handleTabRestored() {
+      if (!settings.enabled || isCurrentReelPinned) return;
+
+      setTimeout(() => {
+        if (window.FBVideoDetector) {
+          window.FBVideoDetector.refresh();
+        }
+
+        const video = window.FBVideoDetector ? window.FBVideoDetector.getActiveVideo() : null;
+        if (!video) return;
+
+        // Check 1: Did the video finish while in the background?
+        if (video.ended || (video.duration > 0 && video.duration - video.currentTime <= 0.5)) {
+          if (window.FBAutoScrollHUD) {
+            window.FBAutoScrollHUD.setInterruptedState(false);
+          }
+          window.FBAutoScroller.scrollNext({ isManual: false });
+          return;
+        }
+
+        // Check 2: Was the video paused when switching tabs or apps?
+        if (video.paused && !isCurrentReelPinned && wasPlayingBeforeLoss) {
+          video.play().then(() => {
+            if (window.FBAutoScrollHUD) {
+              window.FBAutoScrollHUD.setInterruptedState(false);
+              window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
+            }
+          }).catch(() => {
+            // Autoplay restriction blocked auto-resume without user gesture
+            if (window.FBAutoScrollHUD) {
+              window.FBAutoScrollHUD.setInterruptedState(
+                true,
+                '👆 CLICK TO RESUME',
+                'Auto-scroll paused while in background. Click anywhere on the page to resume!'
+              );
+              window.FBAutoScrollHUD.showToast('Click anywhere to resume Auto-Scroll', 3200);
+            }
+
+            // Click anywhere to immediately resume playback
+            const resumeOnInteraction = () => {
+              ['pointerdown', 'keydown', 'mousedown'].forEach(evt => {
+                window.removeEventListener(evt, resumeOnInteraction, true);
+              });
+              video.play().catch(() => {});
+              if (window.FBAutoScrollHUD) {
+                window.FBAutoScrollHUD.setInterruptedState(false);
+                window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
+              }
+            };
+
+            ['pointerdown', 'keydown', 'mousedown'].forEach(evt => {
+              window.addEventListener(evt, resumeOnInteraction, { capture: true, once: true });
+            });
+          });
+        } else if (!video.paused) {
+          if (window.FBAutoScrollHUD) {
+            window.FBAutoScrollHUD.setInterruptedState(false);
+          }
+        }
+      }, 250);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        handleFocusLoss();
+      } else {
+        handleTabRestored();
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      handleFocusLoss();
+    });
+
+    window.addEventListener('focus', () => {
+      handleTabRestored();
+    });
+  }
+
   // Main initialization sequence
   async function init() {
     if (initialized) return;
@@ -189,9 +288,10 @@
     window.FBAutoScrollHUD.init(toggleAutoScroll, toggleLoopCurrentReel);
     window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
 
-    // Setup shortcuts and communications
+    // Setup shortcuts, focus handlers, and communications
     setupKeyboardShortcuts();
     setupMessageListeners();
+    setupVisibilityAndFocusHandlers();
 
     // Start video detection engine
     window.FBVideoDetector.start(handleVideoEnded, handleVideoChange);

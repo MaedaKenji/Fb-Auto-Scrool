@@ -153,12 +153,22 @@
     };
 
     const onTimeUpdate = () => {
-      if (!video || video._fbCompleted || !video.duration || !Number.isFinite(video.duration)) {
+      if (!video || !video.duration || !Number.isFinite(video.duration)) {
         return;
       }
 
       const duration = video.duration;
       const currentTime = video.currentTime;
+
+      // Reset completed status if user rewound or video restarted from beginning
+      if (currentTime < 1.0 && video._fbCompleted) {
+        video._fbCompleted = false;
+        completionFired = false;
+      }
+
+      if (video._fbCompleted) {
+        return;
+      }
 
       // Minimum duration to prevent instant glitch triggers
       if (duration < 1.5) return;
@@ -171,18 +181,51 @@
 
       // Loop wrap-around detection (restarted from near duration to beginning)
       if (lastTime > (duration - 1.0) && currentTime < 0.3) {
+        video._fbCompleted = false;
+        completionFired = false;
         triggerCompletion('loop_restart');
       }
 
       lastTime = currentTime;
     };
 
+    const onPlay = () => {
+      // If playing from beginning, ensure completion flags are clear
+      if (video.currentTime < 1.5) {
+        video._fbCompleted = false;
+        completionFired = false;
+      }
+      if (window.FBAutoScrollHUD && window.FBAutoScrollHUD.setInterruptedState) {
+        window.FBAutoScrollHUD.setInterruptedState(false);
+      }
+    };
+
+    const onPause = () => {
+      if (!video || video._fbCompleted) return;
+
+      // Detect if pause was caused by tab switch or window blur
+      const isInterrupted = !document.hasFocus() || document.hidden;
+      if (isInterrupted) {
+        if (window.FBAutoScrollHUD && window.FBAutoScrollHUD.setInterruptedState) {
+          window.FBAutoScrollHUD.setInterruptedState(
+            true,
+            '👆 RESUME',
+            'Auto-scroll paused because tab or window lost focus. Click anywhere on the page to resume!'
+          );
+        }
+      }
+    };
+
     video.addEventListener('ended', onEnded);
     video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
 
     video._fbAsCleanup = () => {
       video.removeEventListener('ended', onEnded);
       video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
     };
   }
 
@@ -198,8 +241,10 @@
       activeReelContainer = findReelContainer(detected);
       lastTime = activeVideo.currentTime || 0;
       
-      // If this video was not completed before, allow completion
-      completionFired = Boolean(activeVideo._fbCompleted);
+      // Crucial: Always allow newly focused reel to be completed (e.g. when scrolling up or down)
+      activeVideo._fbCompleted = false;
+      completionFired = false;
+      lastCompletedUrl = null;
 
       attachVideoListeners(activeVideo);
 
@@ -212,14 +257,61 @@
     }
   }
 
+  // Watch for SPA URL changes (when user scrolls up or down to another reel)
+  let lastMonitoredUrl = window.location.href;
+
+  function checkUrlChange() {
+    const current = window.location.href;
+    if (current !== lastMonitoredUrl) {
+      lastMonitoredUrl = current;
+      unlockCompletion();
+      if (window.FBAutoScroller && window.FBAutoScroller.resetLock) {
+        window.FBAutoScroller.resetLock();
+      }
+      checkCurrentVideo();
+    }
+  }
+
+  // Setup listeners to detect manual scroll up actions
+  function setupManualScrollListeners() {
+    // Mouse wheel up (deltaY < 0)
+    window.addEventListener('wheel', (e) => {
+      if (e.deltaY < 0) {
+        unlockCompletion();
+        if (window.FBAutoScroller && window.FBAutoScroller.resetLock) {
+          window.FBAutoScroller.resetLock();
+        }
+        setTimeout(checkCurrentVideo, 120);
+      }
+    }, { passive: true });
+
+    // Keyboard ArrowUp or PageUp
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        unlockCompletion();
+        if (window.FBAutoScroller && window.FBAutoScroller.resetLock) {
+          window.FBAutoScroller.resetLock();
+        }
+        setTimeout(checkCurrentVideo, 120);
+      }
+    }, { passive: true });
+
+    // Browser navigation (back/forward or SPA history pop)
+    window.addEventListener('popstate', checkUrlChange);
+  }
+
   function start(onEnded, onVideoChange) {
     callbacks.onVideoEnded = onEnded;
     callbacks.onVideoChange = onVideoChange;
 
+    setupManualScrollListeners();
     checkCurrentVideo();
 
     if (!pollInterval) {
-      pollInterval = setInterval(checkCurrentVideo, 300);
+      pollInterval = setInterval(() => {
+        checkUrlChange();
+        checkCurrentVideo();
+      }, 250);
     }
   }
 
@@ -236,13 +328,23 @@
     completionFired = false;
   }
 
+  function unlockCompletion() {
+    completionFired = false;
+    lastCompletedUrl = null;
+    if (activeVideo) {
+      activeVideo._fbCompleted = false;
+    }
+  }
+
   window.FBVideoDetector = {
     start,
     stop,
+    refresh: checkCurrentVideo,
     getActiveVideo: () => activeVideo,
     getActiveContainer: () => activeReelContainer,
     isUserTyping,
     isCommentsOpen,
-    triggerCompletion
+    triggerCompletion,
+    unlockCompletion
   };
 })();

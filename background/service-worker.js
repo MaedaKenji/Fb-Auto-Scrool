@@ -5,7 +5,7 @@
 
 const DEFAULT_SETTINGS = {
   enabled: true,
-  scrollDelay: 1.0,          // Delay in seconds after video ends
+  scrollDelay: 0.0,          // Delay in seconds after video ends (0 = instant)
   skipSponsored: true,        // Automatically skip sponsored/ad reels
   pauseOnComments: true,      // Pause auto-scroll when comments are opened or typing
   soundNotification: false,   // Subtle audio cue on reel transition
@@ -22,6 +22,11 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     if (current[key] === undefined) {
       settingsToSet[key] = value;
     }
+  }
+
+  // If previous version saved legacy scrollDelay of 1.0, migrate to 0.0
+  if (current.scrollDelay === 1.0) {
+    settingsToSet.scrollDelay = 0.0;
   }
 
   if (Object.keys(settingsToSet).length > 0) {
