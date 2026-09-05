@@ -1,0 +1,13 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Production extension archives
+*.zip
+*.crx
+
+# Node / Editor
+node_modules/
+.vscode/
+.idea/
+*.log

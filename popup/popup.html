@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facebook Reels Auto-Scroll</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-wrapper">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-container">
+          <img src="../icons/icon32.png" alt="Logo" class="logo-img">
+          <span class="pulse-indicator" id="headerPulse"></span>
+        </div>
+        <div class="title-group">
+          <h1>Reels Auto-Scroll</h1>
+          <span class="version-tag">PRO v1.0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Master Control Card -->
+    <section class="master-card" id="masterCard">
+      <div class="master-info">
+        <span class="master-status-label" id="masterStatus">Auto-Scroll Active</span>
+        <span class="master-sub">Advances reels automatically</span>
+      </div>
+      <label class="switch switch-lg">
+        <input type="checkbox" id="masterToggle" checked>
+        <span class="slider round"></span>
+      </label>
+    </section>
+
+    <!-- Settings Controls -->
+    <section class="settings-card">
+      <div class="section-title">Playback Preferences</div>
+
+      <!-- Delay Slider Control -->
+      <div class="setting-item-slider">
+        <div class="slider-header">
+          <div class="setting-label-group">
+            <span class="setting-icon">⏱️</span>
+            <div>
+              <div class="setting-name">Scroll Delay</div>
+              <div class="setting-desc">Wait time after video ends</div>
+            </div>
+          </div>
+          <span class="slider-val-badge" id="delayValueBadge">1.0s</span>
+        </div>
+        <div class="slider-wrapper">
+          <input type="range" id="delayRange" min="0" max="5" step="0.5" value="1.0">
+          <div class="slider-ticks">
+            <span>0s</span>
+            <span>2.5s</span>
+            <span>5s</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Skip Sponsored Toggle -->
+      <div class="setting-item">
+        <div class="setting-label-group">
+          <span class="setting-icon">🚫</span>
+          <div>
+            <div class="setting-name">Skip Sponsored Ads</div>
+            <div class="setting-desc">Auto-advance past ad reels</div>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="skipSponsoredToggle" checked>
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Pause on Comments Toggle -->
+      <div class="setting-item">
+        <div class="setting-label-group">
+          <span class="setting-icon">💬</span>
+          <div>
+            <div class="setting-name">Pause on Comments</div>
+            <div class="setting-desc">Don't scroll while reading/typing</div>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="pauseCommentsToggle" checked>
+          <span class="slider round"></span>
+        </label>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Sound Cue Toggle -->
+      <div class="setting-item">
+        <div class="setting-label-group">
+          <span class="setting-icon">🔔</span>
+          <div>
+            <div class="setting-name">Audio Cue</div>
+            <div class="setting-desc">Subtle chime on reel advance</div>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="soundCueToggle">
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Keyboard Shortcuts Reference -->
+    <section class="shortcuts-card">
+      <div class="shortcut-row">
+        <span class="shortcut-desc">Toggle Auto-Scroll</span>
+        <div class="key-badge">
+          <kbd>Shift</kbd> + <kbd>D</kbd>
+        </div>
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-desc">Loop / Pin Current Reel</span>
+        <div class="key-badge">
+          <kbd>Shift</kbd> + <kbd>L</kbd>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="status-indicator">
+        <span class="dot-online" id="connectionDot"></span>
+        <span id="connectionStatus">Ready on Facebook</span>
+      </div>
+      <a href="https://www.facebook.com/reel/1236483950735204" target="_blank" class="test-link" title="Open test reel in new tab">
+        Open Reel ↗
+      </a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
