@@ -7,6 +7,7 @@
   let settings = {
     enabled: true,
     scrollDelay: 0.0,
+    volume: 1.0,
     skipSponsored: true,
     pauseOnComments: true,
     soundNotification: false,
@@ -34,6 +35,9 @@
       settings = { ...settings, ...data };
       if (window.FBAudioManager) {
         window.FBAudioManager.setAutoUnmute(settings.autoUnmute);
+        if (settings.volume !== undefined) {
+          window.FBAudioManager.setVolume(settings.volume);
+        }
       }
     } catch (e) {
       console.warn('[FB-AutoScroll] Failed to load settings from storage:', e);
@@ -87,10 +91,14 @@
     window.FBAutoScrollHUD.cancelCountdown();
     window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
 
-    // Auto-unmute sound if enabled
-    if (settings.autoUnmute && window.FBAudioManager) {
+    // Auto-unmute sound if enabled, or apply saved volume
+    if (window.FBAudioManager) {
       setTimeout(() => {
-        window.FBAudioManager.unmuteCurrentVideo(info.video);
+        if (settings.autoUnmute) {
+          window.FBAudioManager.unmuteCurrentVideo(info.video);
+        } else {
+          window.FBAudioManager.applySavedVolume(info.video);
+        }
       }, 150);
     }
 
@@ -162,8 +170,13 @@
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.action === 'STATE_CHANGED' && message.settings) {
         settings = { ...settings, ...message.settings };
-        if (window.FBAudioManager && message.settings.autoUnmute !== undefined) {
-          window.FBAudioManager.setAutoUnmute(message.settings.autoUnmute);
+        if (window.FBAudioManager) {
+          if (message.settings.autoUnmute !== undefined) {
+            window.FBAudioManager.setAutoUnmute(message.settings.autoUnmute);
+          }
+          if (message.settings.volume !== undefined) {
+            window.FBAudioManager.setVolume(message.settings.volume);
+          }
         }
         window.FBAutoScrollHUD.cancelCountdown();
         window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);
@@ -180,6 +193,9 @@
           settings[key] = change.newValue;
           if (key === 'autoUnmute' && window.FBAudioManager) {
             window.FBAudioManager.setAutoUnmute(change.newValue);
+          }
+          if (key === 'volume' && window.FBAudioManager) {
+            window.FBAudioManager.setVolume(change.newValue);
           }
         }
         window.FBAutoScrollHUD.updateStatus(settings.enabled, isCurrentReelPinned);

@@ -13,6 +13,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const delayRange = document.getElementById('delayRange');
   const delayValueBadge = document.getElementById('delayValueBadge');
 
+  const volumeRange = document.getElementById('volumeRange');
+  const volumeValueBadge = document.getElementById('volumeValueBadge');
+
   const skipSponsoredToggle = document.getElementById('skipSponsoredToggle');
   const pauseCommentsToggle = document.getElementById('pauseCommentsToggle');
   const autoUnmuteToggle = document.getElementById('autoUnmuteToggle');
@@ -24,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const DEFAULT_SETTINGS = {
     enabled: true,
     scrollDelay: 0.0,
+    volume: 1.0,
     skipSponsored: true,
     pauseOnComments: true,
     soundNotification: false,
@@ -53,6 +57,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateMasterUI(settings.enabled);
   delayRange.value = settings.scrollDelay;
   delayValueBadge.textContent = `${parseFloat(settings.scrollDelay).toFixed(1)}s`;
+
+  const volPct = Math.round((settings.volume !== undefined ? Number(settings.volume) : 1.0) * 100);
+  volumeRange.value = volPct;
+  volumeValueBadge.textContent = `${volPct}%`;
+
   skipSponsoredToggle.checked = settings.skipSponsored;
   pauseCommentsToggle.checked = settings.pauseOnComments;
   autoUnmuteToggle.checked = settings.autoUnmute !== undefined ? settings.autoUnmute : true;
@@ -94,6 +103,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   delayRange.addEventListener('change', (e) => {
     const scrollDelay = parseFloat(e.target.value);
     broadcastSettings({ scrollDelay });
+  });
+
+  // Volume Slider Input & Change
+  volumeRange.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value, 10);
+    volumeValueBadge.textContent = `${val}%`;
+  });
+
+  volumeRange.addEventListener('change', (e) => {
+    const volFraction = parseInt(e.target.value, 10) / 100;
+    broadcastSettings({ volume: volFraction });
   });
 
   // Skip Sponsored Toggle

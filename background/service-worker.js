@@ -10,7 +10,8 @@ const DEFAULT_SETTINGS = {
   pauseOnComments: true,      // Pause auto-scroll when comments are opened or typing
   soundNotification: false,   // Subtle audio cue on reel transition
   loopCurrentReel: false,     // Temporarily loop current reel
-  autoUnmute: true            // Automatically enable sound on load & scroll
+  autoUnmute: true,           // Automatically enable sound on load & scroll
+  volume: 1.0                 // Preferred sound volume level (0.05 to 1.0)
 };
 
 // Initialize default settings upon installation

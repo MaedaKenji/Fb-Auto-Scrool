@@ -6,6 +6,76 @@
 (function () {
   let autoUnmuteEnabled = true;
 
+  const VOLUME_STORAGE_KEY = 'fb_autoscroll_volume';
+  const DEFAULT_VOLUME = 1.0;
+  let isApplyingVolume = false;
+
+  // Retrieve saved volume level from localStorage (or fallback to default 1.0)
+  function getSavedVolume() {
+    try {
+      const val = localStorage.getItem(VOLUME_STORAGE_KEY);
+      if (val !== null) {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed) && parsed >= 0.05 && parsed <= 1.0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return DEFAULT_VOLUME;
+  }
+
+  // Persist volume level to localStorage & chrome.storage.local
+  function saveVolume(vol) {
+    if (isApplyingVolume) return;
+    try {
+      const clamped = Math.max(0.05, Math.min(1.0, Math.round(vol * 100) / 100));
+      localStorage.setItem(VOLUME_STORAGE_KEY, clamped.toString());
+      if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+        chrome.storage.local.set({ volume: clamped }).catch(() => {});
+      }
+    } catch (e) {}
+  }
+
+  // Apply saved volume to video element
+  function applySavedVolume(video) {
+    if (!video) return;
+    const targetVol = getSavedVolume();
+    try {
+      isApplyingVolume = true;
+      if (Math.abs(video.volume - targetVol) > 0.02) {
+        video.volume = targetVol;
+      }
+    } catch (e) {
+    } finally {
+      setTimeout(() => {
+        isApplyingVolume = false;
+      }, 80);
+    }
+  }
+
+  // Set volume programmatically
+  function setVolume(vol) {
+    const parsed = parseFloat(vol);
+    if (isNaN(parsed)) return;
+    const clamped = Math.max(0.05, Math.min(1.0, Math.round(parsed * 100) / 100));
+    saveVolume(clamped);
+    const video = getActiveVideo();
+    if (video) {
+      applySavedVolume(video);
+    }
+  }
+
+  // Sync volume from chrome.storage.local on startup if available
+  try {
+    if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+      chrome.storage.local.get({ volume: DEFAULT_VOLUME }, (res) => {
+        if (res && res.volume !== undefined && localStorage.getItem(VOLUME_STORAGE_KEY) === null) {
+          localStorage.setItem(VOLUME_STORAGE_KEY, res.volume.toString());
+        }
+      });
+    }
+  } catch (e) {}
+
   const UNMUTE_SELECTORS = [
     'div[role="button"][aria-label*="Audio is muted" i]',
     'div[role="button"][aria-label*="dibisukan" i]',
@@ -64,15 +134,13 @@
       }
     }
 
-    // 2. Direct HTML5 video unmute
+    // 2. Direct HTML5 video unmute and restore saved volume level
     const wasPlaying = !video.paused;
     try {
       if (video.muted) {
         video.muted = false;
       }
-      if (video.volume === 0) {
-        video.volume = 1.0;
-      }
+      applySavedVolume(video);
     } catch (e) {}
 
     // 3. Fallback: Simulate 'm' keypress if still muted
@@ -89,6 +157,11 @@
         video.play().catch(() => {});
       });
     }
+
+    // Ensure saved volume is re-applied even after Facebook's React click handlers settle
+    setTimeout(() => {
+      applySavedVolume(video);
+    }, 100);
 
     syncHUDState(video.muted);
   }
@@ -117,16 +190,25 @@
     }
   }
 
-  // Attach volumechange listener to video to keep HUD in sync
+  // Attach volumechange listener to video to keep HUD and saved volume in sync
   function attachVideoAudioListener(video) {
     if (!video || video._fbAudioBound) return;
     video._fbAudioBound = true;
 
+    // Apply saved volume as soon as video binds
+    applySavedVolume(video);
+
     video.addEventListener('volumechange', () => {
       syncHUDState(video.muted || video.volume === 0);
+      // If user adjusted volume manually and video is unmuted, save the volume
+      if (!video.muted && video.volume > 0 && !isApplyingVolume) {
+        const newVol = Math.round(video.volume * 100) / 100;
+        saveVolume(newVol);
+      }
     });
 
     video.addEventListener('playing', () => {
+      applySavedVolume(video);
       if (autoUnmuteEnabled && (video.muted || video.volume === 0)) {
         unmuteCurrentVideo(video);
       }
@@ -179,6 +261,10 @@
     toggleAudio,
     isMuted,
     setAutoUnmute,
-    attachVideoAudioListener
+    attachVideoAudioListener,
+    getSavedVolume,
+    saveVolume,
+    applySavedVolume,
+    setVolume
   };
 })();
